@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+:root {
+  --tatonic-purple: #BD2FA7;
+  --positive: #1D9E75;
+  --negative: #D85A30;
+}
+
+body {
+  background: #f5f5f5;
+  color: #1a1a1a;
+}
+
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
