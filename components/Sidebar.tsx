@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Briefcase, Package, History, LogOut, Landmark } from 'lucide-react'
@@ -28,7 +29,7 @@ export default function Sidebar() {
     <aside className="w-56 flex-shrink-0 bg-[#111827] flex flex-col min-h-screen">
       <div className="px-5 py-6 border-b border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md flex-shrink-0" style={{ background: '#BD2FA7' }} />
+          <Image src="/logo.png" alt="Tatonic Ventures" width={28} height={28} className="rounded-md flex-shrink-0" />
           <div>
             <div className="text-white text-sm font-semibold leading-tight">Tatonic</div>
             <div className="text-gray-500 text-xs">Ventures LLC</div>
