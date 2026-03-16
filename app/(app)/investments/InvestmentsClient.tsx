@@ -226,7 +226,7 @@ export default function InvestmentsClient({
               tab === t ? 'text-white' : 'text-gray-500 bg-white border border-gray-200 hover:text-gray-700'
             }`}
             style={tab === t ? { background: '#BD2FA7' } : {}}>
-            {t === 'Private' ? 'Private Holdings' : 'Stock Portfolio'}
+            {t === 'Private' ? 'Holdings' : 'Stock Portfolio'}
           </button>
         ))}
       </div>
