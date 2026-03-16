@@ -2,15 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Briefcase, LineChart, Package, History, LogOut } from 'lucide-react'
+import { LayoutDashboard, Briefcase, Package, History, LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const nav = [
-  { href: '/dashboard',        label: 'Dashboard',        icon: LayoutDashboard },
-  { href: '/private-holdings', label: 'Private Holdings', icon: Briefcase },
-  { href: '/portfolio',        label: 'Portfolio',        icon: LineChart },
-  { href: '/assets',           label: 'Assets',           icon: Package },
-  { href: '/history',          label: 'NAV History',      icon: History },
+  { href: '/dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/investments', label: 'Investments', icon: Briefcase },
+  { href: '/assets',      label: 'Assets',      icon: Package },
+  { href: '/history',     label: 'NAV History', icon: History },
 ]
 
 export default function Sidebar() {
@@ -26,7 +25,6 @@ export default function Sidebar() {
 
   return (
     <aside className="w-56 flex-shrink-0 bg-[#111827] flex flex-col min-h-screen">
-      {/* Logo */}
       <div className="px-5 py-6 border-b border-white/10">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md flex-shrink-0" style={{ background: '#BD2FA7' }} />
@@ -37,7 +35,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 py-4 px-3 space-y-0.5">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
@@ -46,9 +43,7 @@ export default function Sidebar() {
               key={href}
               href={href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                active
-                  ? 'bg-[#BD2FA7]/20 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                active ? 'bg-[#BD2FA7]/20 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Icon size={16} className={active ? 'text-[#BD2FA7]' : ''} />
@@ -58,7 +53,6 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Logout */}
       <div className="p-3 border-t border-white/10">
         <button
           onClick={handleLogout}
