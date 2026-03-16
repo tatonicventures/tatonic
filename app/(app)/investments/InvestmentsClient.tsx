@@ -2,11 +2,9 @@
 
 import { useState } from 'react'
 import { Plus, X, Pencil, Trash2, TrendingUp } from 'lucide-react'
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import ValueHistoryModal from '@/components/ValueHistoryModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Holding = {
@@ -41,8 +39,6 @@ type Position = {
   notes: string | null
   realized_profits: number | null
 }
-
-type HistoryRow = { date: string; value: number }
 
 const EMPTY_HOLDING: Omit<Holding, 'id' | 'return_dollars' | 'return_pct'> = {
   name: '', type: 'Stock', status: 'Open', action_date: '',
@@ -95,11 +91,13 @@ export default function InvestmentsClient({
   const [saving, setSaving] = useState(false)
 
   // History modal
-  const [historyHolding, setHistoryHolding] = useState<Holding | null>(null)
-  const [historyData, setHistoryData] = useState<HistoryRow[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [newHistoryDate, setNewHistoryDate] = useState('')
-  const [newHistoryValue, setNewHistoryValue] = useState('')
+  const [historyModal, setHistoryModal] = useState<{
+    entityId: string; entityName: string; currentValue: number
+    table: 'holding_value_history' | 'portfolio_value_history'
+    idColumn: 'holding_id' | 'position_id'
+    valueColumn: 'value'
+    onValueUpdate: (v: number) => void
+  } | null>(null)
 
   const supabase = createClient()
   const router = useRouter()
@@ -142,12 +140,13 @@ export default function InvestmentsClient({
       const { data } = await supabase.from('private_holdings').update(payload).eq('id', editId).select().single()
       if (data) {
         setHoldings(p => p.map(h => h.id === editId ? data : h))
-        // Record a value snapshot in history
-        await supabase.from('holding_value_history').insert({
-          holding_id: editId,
-          date: new Date().toISOString().split('T')[0],
-          value: payload.value,
-        })
+        const today = new Date().toISOString().split('T')[0]
+        await supabase.from('holding_value_history').upsert(
+          { holding_id: editId, date: today, value: payload.value },
+          { onConflict: 'holding_id,date' }
+        )
+        const { updateNavToday } = await import('@/lib/updateNav')
+        await updateNavToday(supabase)
       }
     }
     setSaving(false); setModal(null); router.refresh()
@@ -172,7 +171,17 @@ export default function InvestmentsClient({
       if (data) setPositions(p => [data, ...p])
     } else if (editId) {
       const { data } = await supabase.from('portfolio_positions').update(posForm).eq('id', editId).select().single()
-      if (data) setPositions(p => p.map(pos => pos.id === editId ? data : pos))
+      if (data) {
+        setPositions(p => p.map(pos => pos.id === editId ? data : pos))
+        const val = posForm.current_value ?? (posForm.action_price ?? 0) * (posForm.qty_shares ?? 0)
+        const today = new Date().toISOString().split('T')[0]
+        await supabase.from('portfolio_value_history').upsert(
+          { position_id: editId, date: today, value: val },
+          { onConflict: 'position_id,date' }
+        )
+        const { updateNavToday } = await import('@/lib/updateNav')
+        await updateNavToday(supabase)
+      }
     }
     setSaving(false); setModal(null); router.refresh()
   }
@@ -184,33 +193,21 @@ export default function InvestmentsClient({
   }
 
   // ── History modal ───────────────────────────────────────────────────────────
-  async function openHistory(h: Holding) {
-    setHistoryHolding(h)
-    setHistoryLoading(true)
-    setNewHistoryDate(new Date().toISOString().split('T')[0])
-    setNewHistoryValue(String(h.value))
-    const { data } = await supabase
-      .from('holding_value_history')
-      .select('date, value')
-      .eq('holding_id', h.id)
-      .order('date', { ascending: true })
-    setHistoryData(data ?? [])
-    setHistoryLoading(false)
+  function openHistoryHolding(h: Holding) {
+    setHistoryModal({
+      entityId: h.id, entityName: h.name, currentValue: h.value,
+      table: 'holding_value_history', idColumn: 'holding_id', valueColumn: 'value',
+      onValueUpdate: (v) => setHoldings(prev => prev.map(x => x.id === h.id ? { ...x, value: v } : x)),
+    })
   }
 
-  async function addHistoryPoint() {
-    if (!historyHolding || !newHistoryDate || !newHistoryValue) return
-    const { data } = await supabase
-      .from('holding_value_history')
-      .upsert({ holding_id: historyHolding.id, date: newHistoryDate, value: Number(newHistoryValue) }, { onConflict: 'holding_id,date' })
-      .select()
-      .single()
-    if (data) {
-      setHistoryData(prev => {
-        const filtered = prev.filter(r => r.date !== newHistoryDate)
-        return [...filtered, { date: data.date, value: data.value }].sort((a, b) => a.date.localeCompare(b.date))
-      })
-    }
+  function openHistoryPosition(p: Position) {
+    const val = p.current_value ?? (p.action_price ?? 0) * (p.qty_shares ?? 0)
+    setHistoryModal({
+      entityId: p.id, entityName: p.asset_name, currentValue: val,
+      table: 'portfolio_value_history', idColumn: 'position_id', valueColumn: 'value',
+      onValueUpdate: (v) => setPositions(prev => prev.map(x => x.id === p.id ? { ...x, current_value: v } : x)),
+    })
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -307,7 +304,7 @@ export default function InvestmentsClient({
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">
-                          <button onClick={() => openHistory(h)} title="Value history" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#BD2FA7]">
+                          <button onClick={() => openHistoryHolding(h)} title="Value history" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#BD2FA7]">
                             <TrendingUp size={13} />
                           </button>
                           <button onClick={() => openEditHolding(h)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
@@ -401,6 +398,9 @@ export default function InvestmentsClient({
                     <td className="px-4 py-3 text-right font-mono" style={{ color: (p.return_pct ?? 0) >= 0 ? '#1D9E75' : '#D85A30' }}>{fmtPct(p.return_pct)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => openHistoryPosition(p)} title="Value history" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#BD2FA7]">
+                          <TrendingUp size={13} />
+                        </button>
                         <button onClick={() => openEditPosition(p)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                           <Pencil size={13} />
                         </button>
@@ -525,53 +525,17 @@ export default function InvestmentsClient({
       )}
 
       {/* ── HISTORY MODAL ── */}
-      {historyHolding && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-base font-semibold">{historyHolding.name}</h2>
-              <button onClick={() => setHistoryHolding(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="flex gap-4 text-xs text-gray-500 mb-5">
-              <span>Invested: <span className="font-mono text-gray-800">{fmt(historyHolding.amount_invested)}</span></span>
-              <span>Current: <span className="font-mono text-gray-800">{fmt(historyHolding.value)}</span></span>
-              <span style={{ color: (historyHolding.value - historyHolding.amount_invested) >= 0 ? '#1D9E75' : '#D85A30' }}>
-                {fmtPct(historyHolding.amount_invested > 0 ? (historyHolding.value - historyHolding.amount_invested) / historyHolding.amount_invested : null)}
-              </span>
-            </div>
-
-            {historyLoading ? (
-              <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Loading…</div>
-            ) : historyData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={historyData} margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} axisLine={false} tickLine={false}
-                    tickFormatter={v => new Date(v).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => fmtShort(v)} width={60} />
-                  <Tooltip formatter={(v) => fmt(v as number)} labelFormatter={l => new Date(l).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} />
-                  <Line type="monotone" dataKey="value" stroke="#BD2FA7" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-32 flex items-center justify-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg mb-4">
-                No history yet — add a data point below to start tracking.
-              </div>
-            )}
-
-            {/* Add data point */}
-            <div className="mt-5 pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-500 mb-3">Add value snapshot</p>
-              <div className="flex gap-2">
-                <input type="date" className="input flex-1" value={newHistoryDate} onChange={e => setNewHistoryDate(e.target.value)} />
-                <input type="number" className="input w-36 font-mono" placeholder="Value" value={newHistoryValue} onChange={e => setNewHistoryValue(e.target.value)} />
-                <button onClick={addHistoryPoint} className="px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ background: '#BD2FA7' }}>
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {historyModal && (
+        <ValueHistoryModal
+          entityId={historyModal.entityId}
+          entityName={historyModal.entityName}
+          currentValue={historyModal.currentValue}
+          table={historyModal.table}
+          idColumn={historyModal.idColumn}
+          valueColumn={historyModal.valueColumn}
+          onValueUpdate={historyModal.onValueUpdate}
+          onClose={() => setHistoryModal(null)}
+        />
       )}
 
       <style jsx>{`

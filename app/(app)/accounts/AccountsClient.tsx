@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, X, Pencil, Trash2 } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, TrendingUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import ValueHistoryModal from '@/components/ValueHistoryModal'
 
 type Account = {
   id: string
@@ -52,6 +53,7 @@ export default function AccountsClient({
   const [liabilityForm, setLiabilityForm] = useState<Omit<Liability, 'id'>>(EMPTY_LIABILITY)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [historyAccount, setHistoryAccount] = useState<Account | null>(null)
   const supabase = createClient()
   const router = useRouter()
 
@@ -74,7 +76,16 @@ export default function AccountsClient({
       if (data) setAccounts(p => [...p, data].sort((a, b) => a.institution.localeCompare(b.institution)))
     } else if (editId) {
       const { data } = await supabase.from('accounts').update(payload).eq('id', editId).select().single()
-      if (data) setAccounts(p => p.map(a => a.id === editId ? data : a))
+      if (data) {
+        setAccounts(p => p.map(a => a.id === editId ? data : a))
+        const today = new Date().toISOString().split('T')[0]
+        await supabase.from('account_balance_history').upsert(
+          { account_id: editId, date: today, balance: payload.balance },
+          { onConflict: 'account_id,date' }
+        )
+        const { updateNavToday } = await import('@/lib/updateNav')
+        await updateNavToday(supabase)
+      }
     }
     setSaving(false); setModal(null); router.refresh()
   }
@@ -175,6 +186,9 @@ export default function AccountsClient({
                   <td className="px-4 py-3 text-gray-400 text-xs max-w-[200px] truncate">{a.notes ?? '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => setHistoryAccount(a)} title="Balance history" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#BD2FA7]">
+                        <TrendingUp size={13} />
+                      </button>
                       <button onClick={() => openEditAccount(a)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                         <Pencil size={13} />
                       </button>
@@ -364,6 +378,19 @@ export default function AccountsClient({
             </div>
           </div>
         </div>
+      )}
+
+      {historyAccount && (
+        <ValueHistoryModal
+          entityId={historyAccount.id}
+          entityName={`${historyAccount.institution} – ${historyAccount.account_name}`}
+          currentValue={historyAccount.balance}
+          table="account_balance_history"
+          idColumn="account_id"
+          valueColumn="balance"
+          onValueUpdate={(v) => setAccounts(prev => prev.map(a => a.id === historyAccount.id ? { ...a, balance: v } : a))}
+          onClose={() => setHistoryAccount(null)}
+        />
       )}
 
       <style jsx>{`

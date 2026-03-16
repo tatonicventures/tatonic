@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, X, Pencil } from 'lucide-react'
+import { Plus, X, Pencil, TrendingUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import ValueHistoryModal from '@/components/ValueHistoryModal'
 
 type Asset = {
   id: string
@@ -42,6 +43,7 @@ export default function AssetsClient({ initialAssets }: { initialAssets: Asset[]
   const [saving, setSaving] = useState(false)
   const [inlineEdit, setInlineEdit] = useState<string | null>(null)
   const [inlineValue, setInlineValue] = useState('')
+  const [historyAsset, setHistoryAsset] = useState<Asset | null>(null)
   const supabase = createClient()
   const router = useRouter()
 
@@ -82,7 +84,16 @@ export default function AssetsClient({ initialAssets }: { initialAssets: Asset[]
       if (!error && data) setAssets(prev => [data, ...prev])
     } else if (editId) {
       const { data, error } = await supabase.from('assets').update(payload).eq('id', editId).select().single()
-      if (!error && data) setAssets(prev => prev.map(a => a.id === editId ? data : a))
+      if (!error && data) {
+        setAssets(prev => prev.map(a => a.id === editId ? data : a))
+        const today = new Date().toISOString().split('T')[0]
+        await supabase.from('asset_value_history').upsert(
+          { asset_id: editId, date: today, value: payload.estimated_value },
+          { onConflict: 'asset_id,date' }
+        )
+        const { updateNavToday } = await import('@/lib/updateNav')
+        await updateNavToday(supabase)
+      }
     }
 
     setSaving(false)
@@ -93,7 +104,16 @@ export default function AssetsClient({ initialAssets }: { initialAssets: Asset[]
   async function handleInlineSave(id: string) {
     const val = Number(inlineValue)
     const { data } = await supabase.from('assets').update({ estimated_value: val }).eq('id', id).select().single()
-    if (data) setAssets(prev => prev.map(a => a.id === id ? data : a))
+    if (data) {
+      setAssets(prev => prev.map(a => a.id === id ? data : a))
+      const today = new Date().toISOString().split('T')[0]
+      await supabase.from('asset_value_history').upsert(
+        { asset_id: id, date: today, value: val },
+        { onConflict: 'asset_id,date' }
+      )
+      const { updateNavToday } = await import('@/lib/updateNav')
+      await updateNavToday(supabase)
+    }
     setInlineEdit(null)
   }
 
@@ -182,9 +202,14 @@ export default function AssetsClient({ initialAssets }: { initialAssets: Asset[]
                   <td className="px-4 py-3 text-right font-mono" style={{ color: (retPct ?? 0) >= 0 ? '#1D9E75' : '#D85A30' }}>{fmtPct(retPct)}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs max-w-[160px] truncate">{a.notes ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => openEdit(a)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
-                      <Pencil size={13} />
-                    </button>
+                    <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => setHistoryAsset(a)} title="Value history" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#BD2FA7]">
+                        <TrendingUp size={13} />
+                      </button>
+                      <button onClick={() => openEdit(a)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                        <Pencil size={13} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
@@ -256,6 +281,19 @@ export default function AssetsClient({ initialAssets }: { initialAssets: Asset[]
             </div>
           </div>
         </div>
+      )}
+
+      {historyAsset && (
+        <ValueHistoryModal
+          entityId={historyAsset.id}
+          entityName={historyAsset.name}
+          currentValue={historyAsset.estimated_value}
+          table="asset_value_history"
+          idColumn="asset_id"
+          valueColumn="value"
+          onValueUpdate={(v) => setAssets(prev => prev.map(a => a.id === historyAsset.id ? { ...a, estimated_value: v } : a))}
+          onClose={() => setHistoryAsset(null)}
+        />
       )}
 
       <style jsx>{`
