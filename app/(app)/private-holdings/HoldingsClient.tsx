@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, X, Pencil } from 'lucide-react'
+import { Plus, X, Pencil, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
@@ -99,6 +99,15 @@ export default function HoldingsClient({ initialHoldings }: { initialHoldings: H
 
     setSaving(false)
     setModal(null)
+    router.refresh()
+  }
+
+  async function deleteHolding(id: string) {
+    if (!confirm('Delete this holding? This cannot be undone.')) return
+    await supabase.from('private_holdings').delete().eq('id', id)
+    setHoldings(prev => prev.filter(h => h.id !== id))
+    const { updateNavToday } = await import('@/lib/updateNav')
+    await updateNavToday(supabase)
     router.refresh()
   }
 
@@ -200,6 +209,9 @@ export default function HoldingsClient({ initialHoldings }: { initialHoldings: H
                     <div className="flex items-center gap-1.5 justify-end">
                       <button onClick={() => openEdit(h)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                         <Pencil size={13} />
+                      </button>
+                      <button onClick={() => deleteHolding(h.id)} title="Delete" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500">
+                        <Trash2 size={13} />
                       </button>
                       {h.status === 'Open' && (
                         <button onClick={() => handleClose(h.id)} className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700">

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, X, Pencil, TrendingUp } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, TrendingUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import ValueHistoryModal from '@/components/ValueHistoryModal'
@@ -98,6 +98,15 @@ export default function AssetsClient({ initialAssets }: { initialAssets: Asset[]
 
     setSaving(false)
     setModal(null)
+    router.refresh()
+  }
+
+  async function deleteAsset(id: string) {
+    if (!confirm('Delete this asset? This cannot be undone.')) return
+    await supabase.from('assets').delete().eq('id', id)
+    setAssets(prev => prev.filter(a => a.id !== id))
+    const { updateNavToday } = await import('@/lib/updateNav')
+    await updateNavToday(supabase)
     router.refresh()
   }
 
@@ -208,6 +217,9 @@ export default function AssetsClient({ initialAssets }: { initialAssets: Asset[]
                       </button>
                       <button onClick={() => openEdit(a)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
                         <Pencil size={13} />
+                      </button>
+                      <button onClick={() => deleteAsset(a.id)} title="Delete" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500">
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </td>
